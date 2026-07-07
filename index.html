@@ -24,7 +24,7 @@
   }
   html,body{ height:100%; overflow:hidden; color:var(--ink);
     font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif; }
-  body{ position:fixed; inset:0; touch-action:none;   /* o arrasto da virada não é roubado por scroll/zoom */
+  body{ position:fixed; inset:0; touch-action:pinch-zoom;   /* 1 dedo = virar página; 2 dedos = zoom de pinça */
     background:
       radial-gradient(88% 46% at 50% -10%, rgba(238,228,198,.10) 0%, rgba(120,110,80,.05) 42%, transparent 66%),
       radial-gradient(120% 82% at 50% 120%, #2a0508 0%, #170609 40%, #0b0708 74%, #060506 100%); }
@@ -34,8 +34,8 @@
   #scene3d{ position:fixed; inset:0; z-index:1; overflow:hidden; }                    /* páginas CSS3D */
   #scene3d > div{ pointer-events:none; }
   #vignette{ position:fixed; inset:0; z-index:2; pointer-events:none;
-    box-shadow: inset 0 0 150px rgba(0,0,0,.6);
-    background:radial-gradient(140% 112% at 50% 112%, transparent 44%, rgba(5,4,5,.55) 100%); }
+    box-shadow: inset 0 0 110px rgba(0,0,0,.42);
+    background:radial-gradient(135% 108% at 50% 56%, transparent 58%, rgba(5,4,5,.4) 100%); }
 
   /* ---- folha do livro (frente = página, verso = déco) ---- */
   .leaf{ position:relative; width:520px; height:735px; transform-style:preserve-3d;
@@ -547,7 +547,7 @@ function flip(dir){
   arrive(leaves[current]); trackFolha();
 }
 
-/* =========================== atmosfera WebGL (holofotes · poeira dourada · névoa) =========================== */
+/* =========================== atmosfera WebGL (ribalta · poeira dourada · névoa) =========================== */
 const bg = new THREE.WebGLRenderer({ canvas:bgCanvas, alpha:true, antialias:false });
 bg.setPixelRatio(Math.min(devicePixelRatio, 2));
 bg.setSize(innerWidth, innerHeight);
@@ -635,45 +635,7 @@ function makeGlitter(scene, count, opts){
 }
 const glitter = makeGlitter(bgScene, isMobile ? 90 : 200);
 
-/* ---- feixes de holofote varrendo (god rays descendo do topo, pivô na fonte) ---- */
-function beamTexture(){
-  const W = 96, H = 256;
-  const c = document.createElement('canvas'); c.width = W; c.height = H;
-  const g = c.getContext('2d'); const img = g.createImageData(W, H); const d = img.data;
-  for (let y=0; y<H; y++){
-    const vf = Math.pow(1 - y/H, 1.5);              // brilhante na fonte (topo), esvaece descendo
-    for (let x=0; x<W; x++){
-      const nx = (x/(W-1))*2 - 1;
-      const hf = Math.exp(-nx*nx*3.0);              // bordas laterais suaves
-      const i = (y*W + x)*4;
-      d[i]=255; d[i+1]=249; d[i+2]=235;             // branco quente de holofote
-      d[i+3] = Math.round(vf*hf*255);
-    }
-  }
-  g.putImageData(img, 0, 0);
-  const t = new THREE.CanvasTexture(c); t.needsUpdate = true; return t;
-}
-const beamTex = beamTexture();
-const beams = [];
-function mkBeam(scene){
-  const geo = new THREE.PlaneGeometry(1, 1, 1, 1);        // apex estreito no topo (y=0), base larga (y=-1)
-  const p = geo.attributes.position;
-  p.setXY(0, -0.07, 0); p.setXY(1, 0.07, 0); p.setXY(2, -0.5, -1); p.setXY(3, 0.5, -1);
-  p.needsUpdate = true;
-  const m = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ map:beamTex, transparent:true,
-    depthWrite:false, blending:THREE.AdditiveBlending, opacity:0.3, side:THREE.DoubleSide }));
-  scene.add(m); return m;
-}
-function addBeam(scene, xf, opBase, ampMul){
-  const m = mkBeam(scene); const baseA = (xf-0.5)*0.5;   // feixes se abrem em leque a partir do centro
-  m.rotation.z = baseA;
-  beams.push({ m, xf, opBase, baseA, amp:(0.12+Math.random()*0.10)*(ampMul||1),
-    spd:0.09+Math.random()*0.09, ph:Math.random()*6.28 });
-}
-const NB = isMobile ? 3 : 4;
-for (let i=0;i<NB;i++) addBeam(bgScene, (i+0.5)/NB, 0.30);   // feixes atrás das páginas (iluminam o palco em volta)
-
-/* camada frontal (acima das páginas): glints de virada + purpurina caindo + feixes suaves cruzando a página */
+/* camada frontal (acima das páginas): glints de virada + purpurina caindo */
 let front = null, frontScene = null, frontGlitter = null;
 if (!reduced){
   const fc = document.createElement('canvas'); fc.id = 'bgFront';
@@ -686,8 +648,6 @@ if (!reduced){
   frontGlitter = isMobile                                  // mobile: poucas, maiores e notáveis
     ? makeGlitter(frontScene, 16, { sizeMin:6, sizeRange:8, even:true })
     : makeGlitter(frontScene, 34, { sizeMin:4, sizeRange:6, even:true });
-  addBeam(frontScene, 0.36, 0.10, 0.85);   // 2 feixes fracos cruzando a página (holofote sobre o artista)
-  addBeam(frontScene, 0.64, 0.10, 0.85);
 }
 
 /* faíscas douradas lançadas na virada (a partir da lombada) */
@@ -771,11 +731,6 @@ function fit(){
   glowR.position.set( (halfWpx+70), -vh*0.46, -50); glowR.scale.set(vw*0.72, vh*0.72, 1);
   glowStage.position.set(0, -vh*0.10, -200);        glowStage.scale.set(vw*0.9, vh*1.02, 1);
   glowCold.position.set(0, vh*0.5, -80);            glowCold.scale.set(vw*1.1, vh*0.55, 1);
-  const beamLen = vh*1.3, beamW = vw*0.42;          // feixes: fonte no topo, descendo por toda a altura
-  for (const b of beams){
-    b.m.scale.set(beamW, beamLen, 1);
-    b.m.position.set((b.xf-0.5)*vw*0.86, vh*0.52, -60);
-  }
   if (front) front.setSize(vw, vh);
 }
 let camDist = 1600;
@@ -841,6 +796,7 @@ function endFlip(){
 }
 function gestureDown(e){
   if (document.getElementById('intro')) return;      // durante a abertura, a intro cuida do toque
+  if (window.visualViewport && visualViewport.scale > 1.05) return;   // com zoom de pinça aplicado, não vira página
   if (e.target.closest && e.target.closest('.nav-arrow')) return;
   drag.on = true; drag.id = e.pointerId;
   drag.sx = drag.lx = e.clientX; drag.sy = drag.ly = e.clientY;
@@ -960,11 +916,7 @@ function tick(){
   css.render(cssScene, camera);
 
   if (!reduced){
-    for (const b of beams){                          // feixes de holofote varrendo devagar (pivô na fonte)
-      b.m.rotation.z = b.baseA + b.amp*Math.sin(t*b.spd + b.ph);
-      b.m.material.opacity = b.opBase * (0.72 + 0.5*Math.abs(Math.sin(t*0.4 + b.ph)));
-    }
-    // holofotes pulsam conforme o programa avança; na última folha (agradecimento) as luzes baixam
+    // ribalta pulsa conforme o programa avança; na última folha (agradecimento) as luzes baixam
     const pulse = 0.4 + 0.16*Math.sin(t*0.8);
     let heat = 1 + (current/(TOTAL-1))*0.6;
     if (current === TOTAL-1) heat = 0.42;
@@ -984,7 +936,7 @@ function tick(){
         s.position.y = -innerHeight/2 - s.userData.sc*0.4; s.position.x = (Math.random()-0.5)*innerWidth;
       }
     }
-    stepGlitter(glitter, dt, t);                     // purpurina caindo (junto com os feixes)
+    stepGlitter(glitter, dt, t);                     // purpurina caindo
     stepBurst(dt);
     bgScene.position.set(-camX*0.35, -camY*0.35, 0);
     if (frontScene) frontScene.position.set(camX*1.6, camY*1.6, 0);
